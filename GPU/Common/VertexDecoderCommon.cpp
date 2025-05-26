@@ -23,6 +23,7 @@
 
 #include "Common/CommonTypes.h"
 #include "Common/Data/Convert/ColorConv.h"
+#include "Common/Math/CrossSIMD.h"
 #include "Common/Log.h"
 #include "Common/LogReporting.h"
 #include "Core/Config.h"
@@ -418,13 +419,13 @@ void VertexDecoder::Step_TcU8MorphToFloat(const VertexDecoder *dec, const u8 *pt
 		float w = gstate_c.morphWeights[n];
 		const u8 *uvdata = (const u8 *)(ptr + dec->onesize_*n + dec->tcoff);
 
-		uv[0] += (float)uvdata[0] * (1.f / 128.f) * w;
-		uv[1] += (float)uvdata[1] * (1.f / 128.f) * w;
+		uv[0] += (float)uvdata[0] * w;
+		uv[1] += (float)uvdata[1] * w;
 	}
 
 	float *out = (float *)(decoded + dec->decFmt.uvoff);
-	out[0] = uv[0];
-	out[1] = uv[1];
+	out[0] = uv[0] * (1.f / 128.f);
+	out[1] = uv[1] * (1.f / 128.f);
 }
 
 void VertexDecoder::Step_TcU16MorphToFloat(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -434,13 +435,13 @@ void VertexDecoder::Step_TcU16MorphToFloat(const VertexDecoder *dec, const u8 *p
 		float w = gstate_c.morphWeights[n];
 		const u16_le *uvdata = (const u16_le *)(ptr + dec->onesize_*n + dec->tcoff);
 
-		uv[0] += (float)uvdata[0] * (1.f / 32768.f) * w;
-		uv[1] += (float)uvdata[1] * (1.f / 32768.f) * w;
+		uv[0] += (float)uvdata[0] * w;
+		uv[1] += (float)uvdata[1] * w;
 	}
 
 	float *out = (float *)(decoded + dec->decFmt.uvoff);
-	out[0] = uv[0];
-	out[1] = uv[1];
+	out[0] = uv[0] * (1.f / 32768.f);
+	out[1] = uv[1] * (1.f / 32768.f);
 }
 
 void VertexDecoder::Step_TcU16DoubleMorphToFloat(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -450,13 +451,13 @@ void VertexDecoder::Step_TcU16DoubleMorphToFloat(const VertexDecoder *dec, const
 		float w = gstate_c.morphWeights[n];
 		const u16_le *uvdata = (const u16_le *)(ptr + dec->onesize_*n + dec->tcoff);
 
-		uv[0] += (float)uvdata[0] * (1.f / 16384.f) * w;
-		uv[1] += (float)uvdata[1] * (1.f / 16384.f) * w;
+		uv[0] += (float)uvdata[0] * w;
+		uv[1] += (float)uvdata[1] * w;
 	}
 
 	float *out = (float *)(decoded + dec->decFmt.uvoff);
-	out[0] = uv[0];
-	out[1] = uv[1];
+	out[0] = uv[0] * (1.f / 16384.f);
+	out[1] = uv[1] * (1.f / 16384.f);
 }
 
 void VertexDecoder::Step_TcFloatMorph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -479,16 +480,15 @@ void VertexDecoder::Step_TcU8PrescaleMorph(const VertexDecoder *dec, const u8 *p
 	float uv[2]{};
 	const int morphcount = dec->morphcount;
 	for (int n = 0; n < morphcount; n++) {
-		const float w = gstate_c.morphWeights[n] * (1.f / 128.f);
-		const u8 *uvdata = (const u8 *)(ptr + dec->onesize_*n + dec->tcoff);
+		const float w = gstate_c.morphWeights[n];
+		const u8 *uvdata = (const u8 *)(ptr + dec->onesize_ * n + dec->tcoff);
 
 		uv[0] += (float)uvdata[0] * w;
 		uv[1] += (float)uvdata[1] * w;
 	}
-
 	float *out = (float *)(decoded + dec->decFmt.uvoff);
-	out[0] = uv[0] * dec->prescaleUV_->uScale + dec->prescaleUV_->uOff;
-	out[1] = uv[1] * dec->prescaleUV_->vScale + dec->prescaleUV_->vOff;
+	out[0] = uv[0] * dec->prescaleUV_->uScale * (1.f / 128.f) + dec->prescaleUV_->uOff;
+	out[1] = uv[1] * dec->prescaleUV_->vScale * (1.f / 128.f) + dec->prescaleUV_->vOff;
 }
 
 void VertexDecoder::Step_TcU16PrescaleMorph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -610,7 +610,7 @@ void VertexDecoder::Step_Color5551Morph(const VertexDecoder *dec, const u8 *ptr,
 	for (int i = 0; i < 4; i++) {
 		c[i] = clamp_u8((int)col[i]);
 	}
-	gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && (int)col[3] >= 255;
+	gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && col[3] >= 255.0f;
 }
 
 void VertexDecoder::Step_Color4444Morph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -626,15 +626,15 @@ void VertexDecoder::Step_Color4444Morph(const VertexDecoder *dec, const u8 *ptr,
 	for (int i = 0; i < 4; i++) {
 		c[i] = clamp_u8((int)col[i]);
 	}
-	gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && (int)col[3] >= 255;
+	gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && col[3] >= 255.0f;
 }
 
 void VertexDecoder::Step_Color8888Morph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
-	float col[4]{};
+#ifdef CROSSSIMD_SLOW
 	const int morphcount = dec->morphcount;
 	for (int n = 0; n < morphcount; n++) {
 		float w = gstate_c.morphWeights[n];
-		const u8 *cdata = (const u8*)(ptr + dec->onesize_*n + dec->coloff);
+		const u8 *cdata = (const u8*)(ptr + dec->onesize_ * n + dec->coloff);
 		for (int j = 0; j < 4; j++)
 			col[j] += w * cdata[j];
 	}
@@ -643,6 +643,27 @@ void VertexDecoder::Step_Color8888Morph(const VertexDecoder *dec, const u8 *ptr,
 		c[i] = clamp_u8((int)col[i]);
 	}
 	gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && (int)col[3] >= 255;
+#else
+	float col[4]{};
+	const int morphcount = dec->morphcount;
+
+	const float *weights = gstate_c.morphWeights;
+	Vec4F32 sum = Vec4F32::Zero();
+
+	for (int n = 0; n < morphcount; n++) {
+		const u8 *cdata = (const u8*)(ptr + dec->onesize_ * n + dec->coloff);
+		const Vec4F32 w = Vec4F32::Splat(weights[n]);
+		sum += Vec4F32::LoadConvertU8(cdata) * w;
+	}
+
+	u8 *c = decoded + dec->decFmt.c0off;
+	sum.StoreConvertToU8(c);
+
+	// Just for alpha. Maybe there's a better way.
+	float temp[4];
+	sum.Store(temp);
+	gstate_c.vertexFullAlpha = gstate_c.vertexFullAlpha && temp[3] >= 255.0f;
+#endif
 }
 
 void VertexDecoder::Step_NormalS8(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -697,6 +718,7 @@ void VertexDecoder::Step_NormalFloatSkin(const VertexDecoder *dec, const u8 *ptr
 }
 
 void VertexDecoder::Step_NormalS8Morph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
+#ifdef CROSSSIMD_SLOW
 	float acc[3]{};
 	const int morphcount = dec->morphcount;
 	for (int n = 0; n < morphcount; n++) {
@@ -707,6 +729,19 @@ void VertexDecoder::Step_NormalS8Morph(const VertexDecoder *dec, const u8 *ptr, 
 	}
 	float *normal = (float *)(decoded + dec->decFmt.nrmoff);
 	memcpy(normal, acc, sizeof(float) * 3);
+#else
+	Vec4F32 sum = Vec4F32::Zero();
+	const float *weights = gstate_c.morphWeights;
+	const int morphcount = dec->morphcount;
+	for (int n = 0; n < morphcount; n++) {
+		Vec4F32 w = Vec4F32::Splat(weights[n]);
+		const s8 *bv = (const s8*)(ptr + dec->onesize_ * n + dec->nrmoff);
+		sum += Vec4F32::LoadConvertS8(bv) * w;
+	}
+	sum = sum * (1.0f / 128.0f);
+	float *normal = (float *)(decoded + dec->decFmt.nrmoff);
+	sum.Store3(normal);
+#endif
 }
 
 void VertexDecoder::Step_NormalS16Morph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -719,7 +754,9 @@ void VertexDecoder::Step_NormalS16Morph(const VertexDecoder *dec, const u8 *ptr,
 			acc[j] += sv[j] * multiplier;
 	}
 	float *normal = (float *)(decoded + dec->decFmt.nrmoff);
-	memcpy(normal, acc, sizeof(float) * 3);
+	normal[0] = acc[0] * (1.0f / 32768.0f);
+	normal[1] = acc[1] * (1.0f / 32768.0f);
+	normal[2] = acc[2] * (1.0f / 32768.0f);
 }
 
 void VertexDecoder::Step_NormalFloatMorph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
@@ -860,6 +897,7 @@ void VertexDecoder::Step_PosS8Morph(const VertexDecoder *dec, const u8 *ptr, u8 
 }
 
 void VertexDecoder::Step_PosS16Morph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
+#ifdef CROSSSIMD_SLOW
 	float acc[3]{};
 	const int morphcount = dec->morphcount;
 	for (int n = 0; n < morphcount; n++) {
@@ -870,6 +908,19 @@ void VertexDecoder::Step_PosS16Morph(const VertexDecoder *dec, const u8 *ptr, u8
 	}
 	float *v = (float *)(decoded + dec->decFmt.posoff);
 	memcpy(v, acc, 12);
+#else
+	Vec4F32 sum = Vec4F32::Zero();
+	const float *weights = gstate_c.morphWeights;
+	const int morphcount = dec->morphcount;
+	for (int n = 0; n < morphcount; n++) {
+		Vec4F32 w = Vec4F32::Splat(weights[n]);
+		const s16_le *sv = (const s16_le *)(ptr + dec->onesize_ * n + dec->posoff);
+		sum += Vec4F32::LoadConvertS16(sv) * w;
+	}
+	sum = sum * (1.0f / 32768.0f);
+	float *v = (float *)(decoded + dec->decFmt.posoff);
+	sum.Store3(v);
+#endif
 }
 
 void VertexDecoder::Step_PosFloatMorph(const VertexDecoder *dec, const u8 *ptr, u8 *decoded) {
